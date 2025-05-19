@@ -5,42 +5,24 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Population Pyramid Visualization</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="css/styles.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
+        /* Basic body font if not set in styles.css, Tailwind handles most typography */
         body {
             font-family: 'Inter', sans-serif;
-            background-color: #f3f4f6; /* Tailwind gray-100 */
+            background-color: #f3f4f6; /* Tailwind gray-100 or your custom background */
         }
+        /* Ensure chart container has a defined height for Chart.js to work properly */
         .chart-container {
             position: relative;
             margin: auto;
-            height: 70vh;
-            width: 90vw;
-            max-width: 800px;
+            height: 70vh; /* Adjust as needed */
+            width: 90vw;  /* Adjust as needed */
+            max-width: 800px; /* Adjust as needed */
         }
-        input[type="range"]::-webkit-slider-thumb {
-            -webkit-appearance: none;
-            appearance: none;
-            width: 20px;
-            height: 20px;
-            background: #3b82f6; /* Tailwind blue-500 */
-            cursor: pointer;
-            border-radius: 50%;
-            border: 2px solid white;
-        }
-        input[type="range"]::-moz-range-thumb {
-            width: 20px;
-            height: 20px;
-            background: #3b82f6; /* Tailwind blue-500 */
-            cursor: pointer;
-            border-radius: 50%;
-            border: 2px solid white;
-        }
-        .hidden-controls {
-            display: none !important;
-        }
-        /* Custom style for the select dropdown arrow */
+         /* Custom style for the select dropdown arrow if not in styles.css */
         select {
             background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='currentColor'%3E%3Cpath fill-rule='evenodd' d='M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z' clip-rule='evenodd' /%3E%3C/svg%3E");
             background-repeat: no-repeat;
@@ -74,7 +56,7 @@
             <canvas id="populationPyramidChart"></canvas>
         </div>
 
-        <div id="controlsContainer" class="flex flex-col sm:flex-row items-center justify-center space-y-4 sm:space-y-0 sm:space-x-4 hidden-controls">
+        <div id="controlsContainer" class="flex flex-col sm:flex-row items-center justify-center space-y-4 sm:space-y-0 sm:space-x-4" style="display: none;">
             <button id="playPauseButton" class="bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-6 rounded-lg shadow-md transition duration-150 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-opacity-75 w-full sm:w-auto">
                 Play
             </button>
@@ -84,306 +66,10 @@
                 <span id="sliderMaxYear" class="text-sm text-gray-600"></span>
             </div>
         </div>
-         <div id="messageBox" class="mt-4 p-3 text-center text-sm rounded-lg hidden"></div>
+         <div id="messageBox" class="mt-4 p-3 text-center text-sm rounded-lg" style="display: none;"></div>
     </div>
 
-    <script>
-        const ctx = document.getElementById('populationPyramidChart').getContext('2d');
-        let pyramidChart;
-        let allYearsData = [];
-        let currentYearIndex = 0;
-        let animationInterval;
-        let isPlaying = false;
-
-        const countrySelector = document.getElementById('countrySelector');
-        const playPauseButton = document.getElementById('playPauseButton');
-        const yearSlider = document.getElementById('yearSlider');
-        const currentYearDisplay = document.getElementById('currentYearDisplay');
-        const dataSourceInfo = document.getElementById('dataSourceInfo');
-        const messageBox = document.getElementById('messageBox');
-        const controlsContainer = document.getElementById('controlsContainer');
-        const sliderComponents = document.getElementById('sliderComponents');
-        const sliderMinYear = document.getElementById('sliderMinYear');
-        const sliderMaxYear = document.getElementById('sliderMaxYear');
-
-        // --- List of your country JSON files (must be in the "Data_Files" folder) ---
-        // Add all your country file names here. The name before ".json" will be used in the dropdown.
-        const countryDataFiles = [
-            "Algeria_pyramid.json",
-            "Egypt_pyramid.json", // Example: Add other files like this
-            "Nigeria_pyramid.json",
-            // ... add all your other country JSON file names
-        ];
-
-        function showMessage(message, type = 'info') {
-            messageBox.textContent = message;
-            messageBox.className = 'mt-4 p-3 text-center text-sm rounded-lg'; // Reset classes
-            if (type === 'success') messageBox.classList.add('bg-green-100', 'text-green-700');
-            else if (type === 'error') messageBox.classList.add('bg-red-100', 'text-red-700');
-            else messageBox.classList.add('bg-blue-100', 'text-blue-700');
-            messageBox.classList.remove('hidden');
-            setTimeout(() => messageBox.classList.add('hidden'), 3500);
-        }
-
-        function processRawData(rawData) {
-            // If rawData is already an array of year objects (for multi-year animation)
-            if (Array.isArray(rawData)) {
-                return rawData.map(yearEntry => ({
-                    year: yearEntry.year,
-                    country: yearEntry.country,
-                    ageGroups: yearEntry.data.map(d => d.ageGroup),
-                    male: yearEntry.data.map(d => d.male),
-                    female: yearEntry.data.map(d => d.female)
-                }));
-            }
-            // If rawData is a single year object (like your current Algeria_pyramid.json)
-            const yearData = {
-                year: rawData.year,
-                country: rawData.country,
-                ageGroups: rawData.data.map(d => d.ageGroup),
-                male: rawData.data.map(d => d.male),
-                female: rawData.data.map(d => d.female)
-            };
-            return [yearData]; // Return as an array for consistency
-        }
-
-
-        function initializeChart(dataIndex) {
-            if (!allYearsData || allYearsData.length === 0 || dataIndex < 0 || dataIndex >= allYearsData.length) {
-                showMessage('No data available to display chart for the selected country/year.', 'error');
-                dataSourceInfo.textContent = "Error: Could not load data.";
-                currentYearDisplay.textContent = "Year: ---";
-                if(pyramidChart) pyramidChart.destroy(); // Clear previous chart
-                return;
-            }
-
-            const currentData = allYearsData[dataIndex];
-            currentYearDisplay.textContent = `Year: ${currentData.year}`;
-            dataSourceInfo.textContent = `Data for "${currentData.country}"`;
-            yearSlider.value = dataIndex;
-
-            const maleDataNegative = currentData.male.map(val => -val);
-
-            if (pyramidChart) {
-                pyramidChart.destroy();
-            }
-
-            pyramidChart = new Chart(ctx, {
-                type: 'bar',
-                data: {
-                    labels: currentData.ageGroups,
-                    datasets: [
-                        {
-                            label: 'Male',
-                            data: maleDataNegative,
-                            backgroundColor: 'rgba(54, 162, 235, 0.7)',
-                            borderColor: 'rgba(54, 162, 235, 1)',
-                            borderWidth: 1, barPercentage: 0.9, categoryPercentage: 0.9,
-                        },
-                        {
-                            label: 'Female',
-                            data: currentData.female,
-                            backgroundColor: 'rgba(255, 99, 132, 0.7)',
-                            borderColor: 'rgba(255, 99, 132, 1)',
-                            borderWidth: 1, barPercentage: 0.9, categoryPercentage: 0.9,
-                        }
-                    ]
-                },
-                options: {
-                    indexAxis: 'y', responsive: true, maintainAspectRatio: false,
-                    scales: {
-                        x: {
-                            stacked: false,
-                            ticks: { callback: function(value) { return Math.abs(value); } },
-                            title: { display: true, text: 'Population' }
-                        },
-                        y: {
-                            stacked: true,
-                            title: { display: true, text: 'Age Group' }
-                        }
-                    },
-                    plugins: {
-                        tooltip: {
-                            callbacks: {
-                                label: function(context) {
-                                    let label = context.dataset.label || '';
-                                    if (label) { label += ': '; }
-                                    if (context.parsed.x !== null) {
-                                        label += Math.abs(context.parsed.x).toLocaleString();
-                                    }
-                                    return label;
-                                }
-                            }
-                        },
-                        legend: { position: 'top' }
-                    },
-                    animation: { duration: 800, easing: 'easeInOutQuart' }
-                }
-            });
-        }
-
-        function updateChartForAnimation(dataIndex) {
-            if (dataIndex < 0 || dataIndex >= allYearsData.length) return;
-            currentYearIndex = dataIndex;
-            const data = allYearsData[currentYearIndex];
-
-            currentYearDisplay.textContent = `Year: ${data.year}`;
-            yearSlider.value = currentYearIndex;
-
-            pyramidChart.data.labels = data.ageGroups;
-            pyramidChart.data.datasets[0].data = data.male.map(val => -val);
-            pyramidChart.data.datasets[1].data = data.female;
-            pyramidChart.update();
-        }
-
-        function startAnimation() {
-            if (isPlaying || allYearsData.length <= 1) return;
-            isPlaying = true;
-            playPauseButton.textContent = 'Pause';
-            playPauseButton.classList.replace('bg-blue-500', 'bg-red-500');
-            playPauseButton.classList.replace('hover:bg-blue-600', 'hover:bg-red-600');
-            animationInterval = setInterval(() => {
-                currentYearIndex = (currentYearIndex + 1) % allYearsData.length;
-                updateChartForAnimation(currentYearIndex);
-            }, 2000);
-            showMessage('Animation started!', 'info');
-        }
-
-        function stopAnimation() {
-            if (!isPlaying) return;
-            isPlaying = false;
-            playPauseButton.textContent = 'Play';
-            playPauseButton.classList.replace('bg-red-500', 'bg-blue-500');
-            playPauseButton.classList.replace('hover:bg-red-600', 'hover:bg-blue-600');
-            clearInterval(animationInterval);
-            showMessage('Animation paused.', 'info');
-        }
-
-        function setupControls() {
-            if (allYearsData.length <= 1) {
-                controlsContainer.classList.add('hidden-controls');
-                if (allYearsData.length === 1) {
-                     currentYearDisplay.textContent = `Year: ${allYearsData[0].year}`;
-                     dataSourceInfo.textContent = `Data for "${allYearsData[0].country}"`;
-                }
-            } else {
-                controlsContainer.classList.remove('hidden-controls');
-                yearSlider.max = allYearsData.length - 1;
-                yearSlider.value = currentYearIndex;
-                sliderMinYear.textContent = allYearsData[0].year;
-                sliderMaxYear.textContent = allYearsData[allYearsData.length - 1].year;
-            }
-        }
-        
-        async function loadCountryData(countryJsonFile) {
-            if (!countryJsonFile) {
-                dataSourceInfo.textContent = "Please select a country.";
-                currentYearDisplay.textContent = "Year: ---";
-                if(pyramidChart) pyramidChart.destroy();
-                controlsContainer.classList.add('hidden-controls');
-                return;
-            }
-
-            // Correct path to the Data_Files folder
-            const fullPath = `Data_Files/${countryJsonFile}`;
-            showMessage(`Loading ${countryJsonFile.replace('_pyramid.json','')}...`, 'info');
-
-            try {
-                const response = await fetch(fullPath);
-                if (!response.ok) {
-                    throw new Error(`HTTP error! Status: ${response.status} for ${fullPath}`);
-                }
-                const rawData = await response.json();
-                allYearsData = processRawData(rawData);
-                
-                currentYearIndex = 0; // Reset to first year for new country
-                // Check for URL parameter for year, specific to the loaded country data
-                const params = new URLSearchParams(window.location.search);
-                const yearParam = params.get('year');
-                if (yearParam && allYearsData.length > 0) {
-                    const requestedYear = parseInt(yearParam, 10);
-                    const foundIndex = allYearsData.findIndex(d => d.year === requestedYear);
-                    if (foundIndex !== -1) {
-                        currentYearIndex = foundIndex;
-                    } else {
-                         showMessage(`Year ${yearParam} not found for this country. Defaulting to first available year.`, 'error');
-                    }
-                }
-
-                initializeChart(currentYearIndex);
-                setupControls();
-                showMessage(`${allYearsData[0].country} data loaded.`, 'success');
-
-            } catch (error) {
-                console.error("Error loading or processing chart data:", error);
-                showMessage(`Error: ${error.message}`, 'error');
-                dataSourceInfo.textContent = "Error: Could not load selected country data.";
-                currentYearDisplay.textContent = "Year: ---";
-                if(pyramidChart) pyramidChart.destroy();
-                controlsContainer.classList.add('hidden-controls');
-            }
-        }
-
-        function populateCountrySelector() {
-            countrySelector.innerHTML = '<option value="">Select a country...</option>'; // Clear existing options
-            countryDataFiles.forEach(fileName => {
-                const option = document.createElement('option');
-                option.value = fileName;
-                // Display a more user-friendly name (e.g., "Algeria" from "Algeria_pyramid.json")
-                option.textContent = fileName.replace('_pyramid.json', '').replace(/_/g, ' ');
-                countrySelector.appendChild(option);
-            });
-        }
-
-        // --- Event Listeners ---
-        countrySelector.addEventListener('change', (event) => {
-            stopAnimation(); // Stop animation if it's running for a previous country
-            loadCountryData(event.target.value);
-        });
-
-        // Play/Pause and Slider listeners (only add if multiple years)
-        playPauseButton.addEventListener('click', () => {
-            if (isPlaying) stopAnimation();
-            else startAnimation();
-        });
-        yearSlider.addEventListener('input', (event) => {
-            stopAnimation();
-            const newIndex = parseInt(event.target.value, 10);
-            if (newIndex !== currentYearIndex) {
-                updateChartForAnimation(newIndex);
-            }
-        });
-
-
-        // --- Initialization ---
-        window.onload = function() {
-            populateCountrySelector();
-            // Optionally, load a default country or a country from URL param
-            const params = new URLSearchParams(window.location.search);
-            const countryFileParam = params.get('countryfile'); // e.g., ?countryfile=Algeria_pyramid.json
-            if (countryFileParam && countryDataFiles.includes(countryFileParam)) {
-                countrySelector.value = countryFileParam; // Set dropdown to this value
-                loadCountryData(countryFileParam);
-            } else if (countryDataFiles.length > 0) {
-                // Load the first country in the list by default if no param
-                // countrySelector.value = countryDataFiles[0];
-                // loadCountryData(countryDataFiles[0]);
-                // Or leave it to "Select a country..."
-                 dataSourceInfo.textContent = "Please select a country to view its population pyramid.";
-            } else {
-                showMessage('No country data files configured.', 'error');
-                countrySelector.innerHTML = '<option value="">No countries available</option>';
-            }
-        };
-
-        let resizeTimeout;
-        window.addEventListener('resize', () => {
-            clearTimeout(resizeTimeout);
-            resizeTimeout = setTimeout(() => {
-                if (pyramidChart) pyramidChart.resize();
-            }, 250);
-        });
-
-    </script>
+    <script src="js/population-pyramid.js" defer></script>
 </body>
 </html>
+
